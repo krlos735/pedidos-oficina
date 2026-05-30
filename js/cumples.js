@@ -3,6 +3,8 @@ import { collection, getDocs, addDoc, deleteDoc, doc, orderBy, query }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { diaCelebracion, esMismoDia } from './utils.js';
 
+export { diaCelebracion, esMismoDia };
+
 // Retorna todos los cumpleaños de Firestore
 export async function getCumpleanos() {
   const snap = await getDocs(query(collection(db, 'cumpleanos'), orderBy('mes'), orderBy('dia')));
