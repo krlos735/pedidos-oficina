@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PedidosOficina</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- LOGIN -->
+  <div id="screen-login" class="screen active">
+    <div class="login-bg">
+      <div class="login-card">
+        <div class="login-header">
+          <div class="logo-mark">🎂</div>
+          <h1>PedidosOficina</h1>
+          <p>Ingresa tu RUT para continuar</p>
+        </div>
+        <div class="login-body">
+          <div class="input-group">
+            <input type="text" id="rut-input" placeholder="Ej: 12.345.678-9" maxlength="12" autocomplete="off" />
+            <span class="input-icon">→</span>
+          </div>
+          <div id="login-error" class="error-msg hidden">RUT no encontrado. Contacta al admin.</div>
+          <button id="btn-login" class="btn-primary">Entrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP PRINCIPAL (usuario) -->
+  <div id="screen-app" class="screen hidden">
+    <header class="app-header">
+      <div class="header-left">
+        <span class="header-logo">🎂</span>
+        <span class="header-title">PedidosOficina</span>
+      </div>
+      <div class="header-right">
+        <span id="header-username" class="header-user"></span>
+        <button id="btn-historial" class="btn-ghost">Mis pedidos</button>
+        <button id="btn-logout" class="btn-ghost danger">Salir</button>
+      </div>
+    </header>
+
+    <!-- Estado: menú bloqueado -->
+    <div id="estado-bloqueado" class="estado-panel hidden">
+      <div class="estado-icon">🔒</div>
+      <h2>No hay pedido hoy</h2>
+      <p id="estado-mensaje">El menú se habilita en días de cumpleaños.</p>
+      <div id="proximo-cumple" class="proximo-info"></div>
+    </div>
+
+    <!-- Estado: menú activo -->
+    <div id="estado-activo" class="hidden">
+      <div class="cumple-banner">
+        <span class="cumple-emoji">🎉</span>
+        <span id="cumple-texto">¡Hoy celebramos!</span>
+      </div>
+
+      <!-- Locales -->
+      <div id="seccion-locales" class="seccion">
+        <h2 class="seccion-titulo">¿Dónde pedimos?</h2>
+        <div id="lista-locales" class="grid-locales"></div>
+      </div>
+
+      <!-- Menú del local -->
+      <div id="seccion-menu" class="seccion hidden">
+        <div class="menu-header">
+          <button id="btn-volver-locales" class="btn-back">← Volver</button>
+          <h2 id="menu-local-nombre" class="seccion-titulo"></h2>
+        </div>
+        <div id="lista-categorias" class="categorias-tabs"></div>
+        <div id="lista-items" class="grid-items"></div>
+      </div>
+    </div>
+
+    <!-- Carrito flotante -->
+    <div id="carrito-fab" class="carrito-fab hidden">
+      <button id="btn-ver-carrito">
+        <span class="carrito-icon">🛒</span>
+        <span id="carrito-count">0</span> items
+        <span class="carrito-total" id="carrito-total-fab">$0</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: detalle ítem -->
+  <div id="modal-item" class="modal-overlay hidden">
+    <div class="modal-card">
+      <button class="modal-close" id="btn-cerrar-item">✕</button>
+      <div id="modal-item-img" class="modal-img"></div>
+      <h3 id="modal-item-nombre"></h3>
+      <p id="modal-item-desc" class="modal-desc"></p>
+      <p id="modal-item-precio" class="modal-precio"></p>
+      <div class="modal-comentario">
+        <label>Comentario (opcional)</label>
+        <input type="text" id="modal-comentario-input" placeholder="Ej: sin mayonesa, extra ketchup..." maxlength="100" />
+      </div>
+      <div class="modal-qty">
+        <button id="btn-qty-menos">−</button>
+        <span id="modal-qty-val">1</span>
+        <button id="btn-qty-mas">+</button>
+      </div>
+      <button id="btn-agregar-item" class="btn-primary">Agregar al pedido</button>
+    </div>
+  </div>
+
+  <!-- MODAL: carrito / resumen -->
+  <div id="modal-carrito" class="modal-overlay hidden">
+    <div class="modal-card modal-carrito-card">
+      <button class="modal-close" id="btn-cerrar-carrito">✕</button>
+      <h3>Mi pedido</h3>
+      <div id="carrito-items-lista"></div>
+      <div class="carrito-subtotal">
+        <span>Total</span>
+        <span id="carrito-total-modal" class="total-grande">$0</span>
+      </div>
+      <button id="btn-confirmar-pedido" class="btn-primary">Confirmar pedido</button>
+    </div>
+  </div>
+
+  <!-- MODAL: historial -->
+  <div id="modal-historial" class="modal-overlay hidden">
+    <div class="modal-card modal-historial-card">
+      <button class="modal-close" id="btn-cerrar-historial">✕</button>
+      <h3>Mis pedidos anteriores</h3>
+      <div id="historial-lista"></div>
+    </div>
+  </div>
+
+  <!-- PANEL ADMIN -->
+  <div id="screen-admin" class="screen hidden">
+    <header class="app-header admin-header">
+      <div class="header-left">
+        <span class="header-logo">⚙️</span>
+        <span class="header-title">Admin</span>
+      </div>
+      <div class="header-right">
+        <button id="btn-admin-logout" class="btn-ghost danger">Salir</button>
+      </div>
+    </header>
+
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="pedidos">Pedidos del día</button>
+      <button class="admin-tab" data-tab="cumples">Cumpleaños</button>
+      <button class="admin-tab" data-tab="usuarios">Usuarios</button>
+      <button class="admin-tab" data-tab="menu">Menú</button>
+    </div>
+
+    <!-- Tab: pedidos del día -->
+    <div id="tab-pedidos" class="admin-panel active">
+      <div class="admin-panel-header">
+        <h2>Pedidos del día</h2>
+        <span id="pedidos-fecha" class="fecha-badge"></span>
+      </div>
+      <div id="pedidos-lista" class="pedidos-grid"></div>
+      <div id="pedidos-vacio" class="vacio-msg hidden">No hay pedidos aún.</div>
+    </div>
+
+    <!-- Tab: cumpleaños -->
+    <div id="tab-cumples" class="admin-panel hidden">
+      <div class="admin-panel-header">
+        <h2>Cumpleaños</h2>
+        <button id="btn-nuevo-cumple" class="btn-primary small">+ Agregar</button>
+      </div>
+      <div id="form-cumple" class="admin-form hidden">
+        <input type="text" id="cumple-nombre" placeholder="Nombre completo" />
+        <input type="date" id="cumple-fecha" />
+        <div class="form-actions">
+          <button id="btn-guardar-cumple" class="btn-primary small">Guardar</button>
+          <button id="btn-cancelar-cumple" class="btn-ghost small">Cancelar</button>
+        </div>
+      </div>
+      <div id="cumples-lista" class="cumples-grid"></div>
+    </div>
+
+    <!-- Tab: usuarios -->
+    <div id="tab-usuarios" class="admin-panel hidden">
+      <div class="admin-panel-header">
+        <h2>Usuarios</h2>
+        <button id="btn-nuevo-usuario" class="btn-primary small">+ Agregar</button>
+      </div>
+      <div id="form-usuario" class="admin-form hidden">
+        <input type="text" id="usuario-nombre" placeholder="Nombre completo" />
+        <input type="text" id="usuario-rut" placeholder="RUT (ej: 12345678-9)" maxlength="10" />
+        <div class="form-actions">
+          <button id="btn-guardar-usuario" class="btn-primary small">Guardar</button>
+          <button id="btn-cancelar-usuario" class="btn-ghost small">Cancelar</button>
+        </div>
+      </div>
+      <div id="usuarios-lista" class="usuarios-grid"></div>
+    </div>
+
+    <!-- Tab: menú -->
+    <div id="tab-menu" class="admin-panel hidden">
+      <div class="admin-panel-header">
+        <h2>Menú Fuente Alemana</h2>
+        <button id="btn-importar-menu" class="btn-primary small">Importar desde Justo</button>
+      </div>
+      <div id="import-status" class="import-status hidden"></div>
+      <div id="menu-admin-lista" class="menu-admin-grid"></div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script type="module" src="js/firebase.js"></script>
+  <script type="module" src="js/utils.js"></script>
+  <script type="module" src="js/auth.js"></script>
+  <script type="module" src="js/cumples.js"></script>
+  <script type="module" src="js/menu.js"></script>
+  <script type="module" src="js/pedidos.js"></script>
+  <script type="module" src="js/admin.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
