@@ -1,20 +1,24 @@
 import { db } from './firebase.js';
 import { collection, addDoc, deleteDoc, doc, getDocs, query, orderBy }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { cleanRut, formatRut, formatPrecio, formatFecha } from './utils.js';
+import { cleanRut, formatRut, formatPrecio, formatFecha, show, hide } from './utils.js';
 import { getCumpleanos, agregarCumpleanos, eliminarCumpleanos, diaCelebracion, esMismoDia } from './cumples.js';
 import { getPedidosHoy } from './pedidos.js';
 import { getMenuLocalFlat, importarMenu, eliminarMenuItem, MENU_FUENTE_ALEMANA } from './menu.js';
-import { show, hide } from './utils.js';
 
 // ── TABS ──
 export function initAdminTabs() {
   document.querySelectorAll('.admin-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.admin-panel').forEach(p => {
+        p.classList.remove('active');
+        p.style.display = 'none';
+      });
       tab.classList.add('active');
-      document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+      const panel = document.getElementById(`tab-${tab.dataset.tab}`);
+      panel.classList.add('active');
+      panel.style.display = 'block';
       cargarTabActivo(tab.dataset.tab);
     });
   });
@@ -182,11 +186,21 @@ export function initFormUsuario() {
 // ── MENÚ ──
 export async function cargarMenuAdmin() {
   const lista = document.getElementById('menu-admin-lista');
+  const header = document.getElementById('tab-menu').querySelector('.admin-panel-header');
+  if (header) header.style.display = 'flex';
+
   lista.innerHTML = '<p style="color:var(--text2);font-size:.85rem">Cargando...</p>';
-  const items = await getMenuLocalFlat('fuente-alemana');
+
+  let items = [];
+  try {
+    items = await getMenuLocalFlat('fuente-alemana');
+  } catch(e) {
+    lista.innerHTML = `<p class="vacio-msg">Error: ${e.message}</p>`;
+    return;
+  }
 
   if (items.length === 0) {
-    lista.innerHTML = '<p class="vacio-msg">Sin ítems. Usa "Importar desde Justo" o los datos de respaldo se cargarán automáticamente.</p>';
+    lista.innerHTML = '<p class="vacio-msg">Sin ítems. Usa "Importar desde Justo" para cargar el menú.</p>';
     return;
   }
 
@@ -212,16 +226,20 @@ export async function cargarMenuAdmin() {
 }
 
 export function initImportarMenu() {
-  document.getElementById('btn-importar-menu').addEventListener('click', async () => {
-    const status = document.getElementById('import-status');
-    show(status);
-    status.textContent = 'Importando menú de respaldo de Fuente Alemana...';
-    try {
-      await importarMenu('fuente-alemana', MENU_FUENTE_ALEMANA);
-      status.textContent = `✓ ${MENU_FUENTE_ALEMANA.length} ítems importados correctamente.`;
-      cargarMenuAdmin();
-    } catch (e) {
-      status.textContent = '✗ Error al importar: ' + e.message;
+  document.addEventListener('click', async (e) => {
+    if (e.target && e.target.id === 'btn-importar-menu') {
+      const status = document.getElementById('import-status');
+      show(status);
+      status.textContent = 'Importando menú...';
+      e.target.disabled = true;
+      try {
+        await importarMenu('fuente-alemana', MENU_FUENTE_ALEMANA);
+        status.textContent = `✓ ${MENU_FUENTE_ALEMANA.length} ítems importados correctamente.`;
+        cargarMenuAdmin();
+      } catch (err) {
+        status.textContent = '✗ Error: ' + err.message;
+      }
+      e.target.disabled = false;
     }
   });
 }
