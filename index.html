@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PedidosOficina</title>
+  <link rel="icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
@@ -151,8 +152,8 @@
     </div>
 
     <!-- Tab: pedidos del día -->
-    <div id="tab-pedidos" class="admin-panel active">
-      <div class="admin-panel-header">
+    <div id="tab-pedidos" class="admin-panel active" style="display:block">
+      <div class="admin-panel-header" style="display:flex">
         <h2>Pedidos del día</h2>
         <span id="pedidos-fecha" class="fecha-badge"></span>
       </div>
@@ -161,8 +162,8 @@
     </div>
 
     <!-- Tab: cumpleaños -->
-    <div id="tab-cumples" class="admin-panel hidden">
-      <div class="admin-panel-header">
+    <div id="tab-cumples" class="admin-panel" style="display:none">
+      <div class="admin-panel-header" style="display:flex">
         <h2>Cumpleaños</h2>
         <button id="btn-nuevo-cumple" class="btn-primary small">+ Agregar</button>
       </div>
@@ -178,8 +179,8 @@
     </div>
 
     <!-- Tab: usuarios -->
-    <div id="tab-usuarios" class="admin-panel hidden">
-      <div class="admin-panel-header">
+    <div id="tab-usuarios" class="admin-panel" style="display:none">
+      <div class="admin-panel-header" style="display:flex">
         <h2>Usuarios</h2>
         <button id="btn-nuevo-usuario" class="btn-primary small">+ Agregar</button>
       </div>
@@ -195,8 +196,8 @@
     </div>
 
     <!-- Tab: menú -->
-    <div id="tab-menu" class="admin-panel hidden">
-      <div class="admin-panel-header">
+    <div id="tab-menu" class="admin-panel" style="display:none">
+      <div class="admin-panel-header" style="display:flex">
         <h2>Menú Fuente Alemana</h2>
         <button id="btn-importar-menu" class="btn-primary small">Importar desde Justo</button>
       </div>
