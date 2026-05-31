@@ -519,6 +519,8 @@ body {
 
 .admin-panel { padding: 1.5rem; max-width: 900px; margin: 0 auto; display: none; }
 .admin-panel.active { display: block; }
+/* forzar visibilidad tabs */
+#tab-pedidos.active, #tab-cumples.active, #tab-usuarios.active, #tab-menu.active { display: block; }
 
 .admin-panel-header {
   display: flex;
