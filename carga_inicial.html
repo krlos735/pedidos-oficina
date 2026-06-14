@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Carga inicial - PedidosOficina</title>
+  <style>
+    body { font-family: monospace; background: #0f0f0f; color: #f0ede8; padding: 2rem; }
+    h2 { color: #e8b84b; }
+    button { background: #e8b84b; color: #000; border: none; padding: .75rem 1.5rem; font-size: 1rem; cursor: pointer; border-radius: 8px; margin: .5rem 0; }
+    button:disabled { opacity: .5; }
+    #log { margin-top: 1rem; line-height: 1.8; }
+    .ok { color: #5cba87; }
+    .err { color: #e05c5c; }
+    .info { color: #9a9590; }
+  </style>
+</head>
+<body>
+  <h2>🚀 Carga inicial — PedidosOficina</h2>
+  <p>Este script carga todos los usuarios y cumpleaños a Firestore.</p>
+  <button id="btn-cargar">Cargar usuarios y cumpleaños</button>
+  <div id="log"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, query, where, writeBatch, doc }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD5uXXbG0Quhg0Fqbg8K02UpfxAe8oX0hw",
+  authDomain: "pedidos-oficina-d34f9.firebaseapp.com",
+  projectId: "pedidos-oficina-d34f9",
+  storageBucket: "pedidos-oficina-d34f9.firebasestorage.app",
+  messagingSenderId: "719565975842",
+  appId: "1:719565975842:web:d7cfbcdf1469381977757b"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+function log(msg, tipo = 'info') {
+  const el = document.getElementById('log');
+  el.innerHTML += `<div class="${tipo}">${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function primerNombre(nombreCompleto) {
+  const partes = nombreCompleto.trim().split(' ');
+  // Capitaliza primera letra
+  return partes[0].charAt(0) + partes[0].slice(1).toLowerCase();
+}
+
+function cleanRut(rut) {
+  return rut.replace(/[^0-9kK]/g, '').toUpperCase();
+}
+
+const personas = [
+  { rut: '18813350-9', nombre: 'CARLOS FELIPE TAPIA ANABALON', fecha: '21/05/1994' },
+  { rut: '20437825-8', nombre: 'EGON BORIS BENAVENTE RODRIGUEZ', fecha: '25/03/2000' },
+  { rut: '19596762-8', nombre: 'ALEJANDRO MANUEL MORA MONSALVES', fecha: '25/02/1997' },
+  { rut: '15186326-4', nombre: 'PATRICIO OSCAR ALEJANDRO CABEZAS AGUAYO', fecha: '26/12/1982' },
+  { rut: '19004872-1', nombre: 'FRANCISCO JAVIER ROSALES MONJE', fecha: '31/05/1995' },
+  { rut: '13723365-7', nombre: 'CRISTIAN FABIAN VALENZUELA NEIRA', fecha: '03/02/1979' },
+  { rut: '21080600-8', nombre: 'MATIAS FELIPE CARRASCO AGUAYO', fecha: null },
+  { rut: '18355857-9', nombre: 'DAVID HERNAN PAREDES CAPETILLO', fecha: '01/12/1992' },
+  { rut: '19993573-9', nombre: 'LUCIANO EMILIO BRIZUELA GREZ', fecha: '22/07/1998' },
+  { rut: '19139279-5', nombre: 'NICOLAS ESTEBAN REYES CORNEJO', fecha: '18/06/1995' },
+  { rut: '17220899-1', nombre: 'CARLOS OSVALDO CIFUENTES ULLOA', fecha: '22/02/1989' },
+  { rut: '19334538-7', nombre: 'MARIA BELEN GONZALEZ DIAZ', fecha: '12/07/1996' },
+  { rut: '20666198-4', nombre: 'GONZALO VASQUEZ NUNEZ', fecha: null },
+  { rut: '26376057-3', nombre: 'ROSYNES SARMIENTO GUZMAN', fecha: '14/11/2002' },
+  { rut: '20852655-3', nombre: 'CRISTOBAL MAURICIO MURILLO BASCUNAN', fecha: '28/08/2001' },
+  { rut: '16633980-4', nombre: 'JUAN GABRIEL TORRES MERY', fecha: null },
+  { rut: '19986076-3', nombre: 'M MEDINA LUCIANO', fecha: null },
+  { rut: '20494892-5', nombre: 'EDUARDO MAXIMILIANO YANEZ TRIGO', fecha: null },
+  { rut: '18685062-9', nombre: 'GABRIEL ALEJANDRO SANDOVAL TORRES', fecha: '07/08/1994' },
+  { rut: '19056814-8', nombre: 'CRISTOBAL ALONSO TAPIA NAVARRETE', fecha: '29/05/1995' },
+  { rut: '26585988-7', nombre: 'MARIA VASQUEZ PEREDA', fecha: '19/02/1992' },
+  { rut: '19373251-8', nombre: 'RODRIGO ALFONSO CHAVEZ ESPINOZA', fecha: null },
+  { rut: '10765404-6', nombre: 'JOSE RAMON DIAZ VARGAS', fecha: '08/06/1968' },
+  { rut: '18744896-4', nombre: 'CESAR ERNESTO BIELI-BIANCHI SERRANO', fecha: '03/10/1983' },
+  { rut: '18387446-2', nombre: 'JUAN ANTONIO MUNOZ LOPEZ', fecha: '20/04/1993' },
+  { rut: '18416518-K', nombre: 'FELIPE ALBERTO ASCENCIO SANDOVAL', fecha: '08/07/1993' },
+  { rut: '16898893-1', nombre: 'CARLOS ALBERTO AMBIADO PEREZ', fecha: '14/01/1989' },
+  { rut: '18250498-K', nombre: 'ALEXIS HUMBERTO VERGARA OLIVARES', fecha: '16/02/1993' },
+  { rut: '19406463-2', nombre: 'BENJAMIN EDUARDO GATICA MUNOZ', fecha: '15/04/1996' },
+  { rut: '19824399-K', nombre: 'DIEGO DURAN DURAN', fecha: '18/10/1998' },
+  { rut: '17223769-K', nombre: 'DANIEL JOAQUIN LEAL EYDE', fecha: '26/10/1989' },
+  { rut: '18962570-7', nombre: 'ALEJANDRO ALEXIS BARRA RETAMAL', fecha: '23/01/1996' },
+  { rut: '19836872-5', nombre: 'NICOLAS MATIAS LOPEZ SEPULVEDA', fecha: null },
+  { rut: '17670744-5', nombre: 'RODRIGO JESUS OSSA VILLALOBOS', fecha: '04/08/1990' },
+  { rut: '20540487-2', nombre: 'VICTOR DANIEL ASENCIO SAAVEDRA', fecha: '30/06/2000' },
+  { rut: '26411257-5', nombre: 'AMADO JESUS JARDIN MOSQUERA', fecha: '13/05/1989' },
+  { rut: '21548432-7', nombre: 'MICHAEL ANDRES IGNACIO VALENZUELA KLENNER', fecha: '05/04/2004' },
+  { rut: '16284652-3', nombre: 'MARCO ANTONIO ANDRES SEPULVEDA LARA', fecha: '17/01/1987' },
+  { rut: '18811942-5', nombre: 'CRISTIAN GERARDO ORELLANA MUNOZ', fecha: '21/01/1995' },
+  { rut: '19531606-6', nombre: 'FELIPE IGNACIO MORAGA PINO', fecha: '03/09/1996' },
+  { rut: '19598102-7', nombre: 'CLAUDIO ALEJANDRO CABRERA MARTINEZ', fecha: '09/05/1997' },
+];
+
+document.getElementById('btn-cargar').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-cargar');
+  btn.disabled = true;
+  log('Iniciando carga...', 'info');
+
+  let usuariosOk = 0, cumlesOk = 0, errores = 0;
+
+  for (const p of personas) {
+    const rutClean = cleanRut(p.rut);
+    const nombreMostrar = primerNombre(p.nombre);
+    try {
+      // Verificar si ya existe
+      const q = query(collection(db, 'usuarios'), where('rutClean', '==', rutClean));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        log(`⚠ Ya existe: ${nombreMostrar} (${p.rut})`, 'info');
+      } else {
+        await addDoc(collection(db, 'usuarios'), {
+          nombre: nombreMostrar,
+          nombreCompleto: p.nombre,
+          rutClean,
+          rol: 'usuario'
+        });
+        log(`✓ Usuario: ${nombreMostrar} — ${p.rut}`, 'ok');
+        usuariosOk++;
+      }
+    } catch(e) {
+      log(`✗ Error usuario ${p.nombre}: ${e.message}`, 'err');
+      errores++;
+    }
+
+    // Cumpleaños solo si tiene fecha
+    if (p.fecha) {
+      const [dia, mes] = p.fecha.split('/').map(Number);
+      try {
+        await addDoc(collection(db, 'cumpleanos'), {
+          nombre: nombreMostrar,
+          nombreCompleto: p.nombre,
+          dia,
+          mes
+        });
+        log(`🎂 Cumpleaños: ${nombreMostrar} — ${dia}/${mes}`, 'ok');
+        cumlesOk++;
+      } catch(e) {
+        log(`✗ Error cumpleaños ${p.nombre}: ${e.message}`, 'err');
+        errores++;
+      }
+    }
+  }
+
+  log(``, 'info');
+  log(`✅ Listo: ${usuariosOk} usuarios, ${cumlesOk} cumpleaños cargados. ${errores} errores.`, 'ok');
+  btn.textContent = '✓ Carga completada';
+});
+</script>
+</body>
+</html>
