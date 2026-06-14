@@ -1,203 +1,196 @@
 import { loginConRut, getUsuarioActual, setUsuarioActual, guardarSesion, cargarSesion, cerrarSesion, initRutInput } from './auth.js';
-import { verificarCumpleHoy, getProximoCumple } from './cumples.js';
+import { getCumpleanos, diaCelebracion, esMismoDia } from './cumples.js';
 import { getLocales, getMenuLocal, MENU_FUENTE_ALEMANA, getMenuLocalFlat, importarMenu } from './menu.js';
 import { getCarrito, agregarAlCarrito, eliminarDelCarrito, getTotalCarrito, getCountCarrito, limpiarCarrito, confirmarPedido, getPedidosUsuario } from './pedidos.js';
 import { formatPrecio, formatFecha, show, hide } from './utils.js';
 import { initAdminTabs, cargarTabActivo, initFormCumple, initFormUsuario, initImportarMenu } from './admin.js';
 
-// ── ESTADO DE LA APP ──
-let menuActual = {};       // grupos de ítems por categoría
-let localActual = null;    // local seleccionado
-let itemSeleccionado = null;
-let categoriaActiva = null;
+let menuActual = {}, localActual = null, itemSeleccionado = null, qty = 1;
+let todosPedidos = [];
 
-// ── INIT ──
 document.addEventListener('DOMContentLoaded', async () => {
   initRutInput();
-  initLoginBtn();
-
-  // Verificar sesión existente
+  document.getElementById('btn-login').addEventListener('click', handleLogin);
   const sesion = cargarSesion();
-  if (sesion) {
-    setUsuarioActual(sesion);
-    if (sesion.rol === 'admin') {
-      mostrarAdmin();
-    } else {
-      await mostrarApp();
-    }
-  }
+  if (sesion) { setUsuarioActual(sesion); sesion.rol==='admin' ? mostrarAdmin() : await mostrarApp(); }
 });
 
-// ── LOGIN ──
-function initLoginBtn() {
-  document.getElementById('btn-login').addEventListener('click', async () => {
-    const rut = document.getElementById('rut-input').value;
-    const errorEl = document.getElementById('login-error');
-    hide(errorEl);
-
-    if (!rut || rut.length < 5) {
-      show(errorEl);
-      errorEl.textContent = 'Ingresa un RUT válido.';
-      return;
-    }
-
-    const btn = document.getElementById('btn-login');
-    btn.textContent = 'Verificando...';
-    btn.disabled = true;
-
-    try {
-      const usuario = await loginConRut(rut);
-      if (!usuario) {
-        show(errorEl);
-        errorEl.textContent = 'RUT no encontrado. Contacta al admin.';
-      } else {
-        setUsuarioActual(usuario);
-        guardarSesion(usuario);
-        if (usuario.rol === 'admin') {
-          mostrarAdmin();
-        } else {
-          await mostrarApp();
-        }
-      }
-    } catch (e) {
-      show(errorEl);
-      errorEl.textContent = 'Error de conexión. Intenta de nuevo.';
-    }
-
-    btn.textContent = 'Entrar';
-    btn.disabled = false;
-  });
+async function handleLogin() {
+  const rut = document.getElementById('rut-input').value;
+  const errorEl = document.getElementById('login-error');
+  hide(errorEl);
+  if (!rut || rut.length < 5) { show(errorEl); errorEl.textContent='Ingresa un RUT válido.'; return; }
+  const btn = document.getElementById('btn-login');
+  btn.textContent='Verificando...'; btn.disabled=true;
+  try {
+    const usuario = await loginConRut(rut);
+    if (!usuario) { show(errorEl); errorEl.textContent='RUT no encontrado. Contacta al admin.'; }
+    else { setUsuarioActual(usuario); guardarSesion(usuario); usuario.rol==='admin' ? mostrarAdmin() : await mostrarApp(); }
+  } catch(e) { show(errorEl); errorEl.textContent='Error de conexión.'; }
+  btn.textContent='Entrar'; btn.disabled=false;
 }
 
-// ── APP USUARIO ──
 async function mostrarApp() {
-  const usuario = getUsuarioActual();
   hide(document.getElementById('screen-login'));
   show(document.getElementById('screen-app'));
-  document.getElementById('screen-app').classList.add('active');
-
+  const usuario = getUsuarioActual();
   document.getElementById('header-username').textContent = usuario.nombre;
+  document.getElementById('btn-logout').onclick = () => { cerrarSesion(); location.reload(); };
+  await renderHome();
+}
 
-  // Logout
-  document.getElementById('btn-logout').addEventListener('click', () => {
-    cerrarSesion();
-    location.reload();
-  });
+// ── HOME ──
+async function renderHome() {
+  const usuario = getUsuarioActual();
+  show(document.getElementById('section-home'));
+  hide(document.getElementById('section-locales'));
+  hide(document.getElementById('section-menu'));
+  hide(document.getElementById('carrito-fab'));
+
+  // Próximo cumpleaños dentro de 7 días
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const en7 = new Date(hoy); en7.setDate(en7.getDate()+7);
+  const cumples = await getCumpleanos();
+  let proxCumple = null, fechaCeleb = null;
+
+  for (const c of cumples) {
+    const celeb = diaCelebracion(c.mes, c.dia); celeb.setHours(0,0,0,0);
+    if (celeb >= hoy && celeb <= en7) {
+      if (!fechaCeleb || celeb < fechaCeleb) { proxCumple = c; fechaCeleb = celeb; }
+    }
+  }
+
+  const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const diasSem = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const cumpleCard = document.getElementById('cumple-card');
+  const cumpleInfo = document.getElementById('cumple-info');
+  const btnPedir = document.getElementById('btn-ir-a-pedir');
+  const sigCumple = document.getElementById('siguiente-cumple');
+
+  if (proxCumple) {
+    const esHoy = esMismoDia(fechaCeleb, hoy);
+    const diasRestantes = Math.round((fechaCeleb - hoy)/(1000*60*60*24));
+    cumpleCard.className = 'cumple-card ' + (esHoy ? 'cumple-hoy-card' : 'cumple-pronto-card');
+    cumpleInfo.innerHTML = esHoy
+      ? `<span class="cumple-tag hoy">🎉 ¡Hoy!</span><div class="cumple-nombre">${proxCumple.nombre} está de cumpleaños</div><div class="cumple-sub">El pedido está habilitado</div>`
+      : `<span class="cumple-tag pronto">📅 En ${diasRestantes} día${diasRestantes>1?'s':''}</span><div class="cumple-nombre">${proxCumple.nombre}</div><div class="cumple-sub">Celebramos el ${diasSem[fechaCeleb.getDay()]} ${fechaCeleb.getDate()} de ${meses[fechaCeleb.getMonth()]}</div>`;
+    show(btnPedir);
+    hide(sigCumple);
+    btnPedir.onclick = mostrarLocales;
+  } else {
+    cumpleCard.className = 'cumple-card cumple-sin-card';
+    cumpleInfo.innerHTML = `<span class="cumple-tag sin">🔒 Sin pedidos</span><div class="cumple-nombre">No hay cumpleaños esta semana</div>`;
+    hide(btnPedir);
+    // Mostrar el siguiente aunque esté lejos
+    const futuros = [];
+    for (const c of cumples) {
+      const celeb = diaCelebracion(c.mes, c.dia); celeb.setHours(0,0,0,0);
+      if (celeb > en7) futuros.push({...c, celeb});
+    }
+    futuros.sort((a,b) => a.celeb-b.celeb);
+    if (futuros.length > 0) {
+      sigCumple.textContent = `Próximo: ${futuros[0].nombre} — ${formatFecha(futuros[0].celeb)}`;
+      show(sigCumple);
+    }
+  }
+
+  // Pedidos del usuario
+  todosPedidos = await getPedidosUsuario(usuario.id);
+  const pendientes = todosPedidos.filter(p => p.estado==='pendiente');
+  const pagados = todosPedidos.filter(p => p.estado!=='pendiente');
+
+  // Pendiente
+  const secPend = document.getElementById('section-pendiente');
+  if (pendientes.length > 0) {
+    show(secPend);
+    const p = pendientes[0];
+    document.getElementById('pend-total').textContent = formatPrecio(p.total);
+    document.getElementById('pend-local').textContent = p.localNombre;
+    const fecha = p.fecha?.toDate ? p.fecha.toDate() : new Date(p.fecha);
+    document.getElementById('pend-fecha').textContent = formatFecha(fecha);
+    document.getElementById('btn-ver-pendiente').onclick = () => abrirDetalle(p);
+  } else hide(secPend);
 
   // Historial
-  document.getElementById('btn-historial').addEventListener('click', () => abrirHistorial());
-  document.getElementById('btn-cerrar-historial').addEventListener('click', () => hide(document.getElementById('modal-historial')));
-
-  // Verificar cumpleaños
-  const { activo, nombre } = await verificarCumpleHoy();
-
-  if (!activo) {
-    show(document.getElementById('estado-bloqueado'));
-    const proximo = await getProximoCumple();
-    if (proximo) {
-      const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-      document.getElementById('estado-mensaje').textContent = 'El menú se habilita en días de cumpleaños.';
-      document.getElementById('proximo-cumple').innerHTML =
-        `🎂 Próximo: <strong>${proximo.nombre}</strong> — celebramos el ${formatFecha(proximo.fechaCelebracion)}`;
-    }
-  } else {
-    hide(document.getElementById('estado-bloqueado'));
-    show(document.getElementById('estado-activo'));
-    document.getElementById('cumple-texto').textContent = `¡Hoy celebramos a ${nombre}! 🎂`;
-    await cargarLocales();
-  }
+  const secHist = document.getElementById('section-historial');
+  const listaHist = document.getElementById('historial-lista');
+  if (pagados.length > 0) {
+    show(secHist);
+    listaHist.innerHTML = pagados.slice(0,8).map(p => {
+      const fecha = p.fecha?.toDate ? p.fecha.toDate() : new Date(p.fecha);
+      return `<div class="hist-row" data-id="${p.id}">
+        <div class="hist-info"><span class="hist-local">${p.localNombre}</span><span class="hist-fecha">${formatFecha(fecha)}</span></div>
+        <span class="hist-monto">${formatPrecio(p.total)}</span>
+        <span class="hist-arrow">›</span>
+      </div>`;
+    }).join('');
+    listaHist.querySelectorAll('.hist-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const p = todosPedidos.find(x => x.id===row.dataset.id);
+        if (p) abrirDetalle(p);
+      });
+    });
+  } else hide(secHist);
 }
 
 // ── LOCALES ──
-async function cargarLocales() {
-  show(document.getElementById('seccion-locales'));
-  const listaEl = document.getElementById('lista-locales');
-  listaEl.innerHTML = '<p style="color:var(--text2);font-size:.85rem">Cargando...</p>';
-
+async function mostrarLocales() {
+  hide(document.getElementById('section-home'));
+  show(document.getElementById('section-locales'));
+  const lista = document.getElementById('lista-locales');
+  lista.innerHTML = '<p class="loading-txt">Cargando...</p>';
   let locales = await getLocales();
-
-  // Si no hay locales en Firestore, usar el de respaldo
-  if (locales.length === 0) {
-    locales = [{ id: 'fuente-alemana', nombre: 'Fuente Alemana', descripcion: 'Concepción · Completos y sándwiches', emoji: '🌭' }];
-  }
-
-  listaEl.innerHTML = locales.map(l => `
+  if (!locales.length) locales = [{id:'fuente-alemana',nombre:'Fuente Alemana',descripcion:'Concepción · Completos y sándwiches',emoji:'🌭'}];
+  lista.innerHTML = locales.map(l => `
     <div class="local-card" data-id="${l.id}" data-nombre="${l.nombre}">
-      <span class="local-icon">${l.emoji || '🍽️'}</span>
-      <span class="local-nombre">${l.nombre}</span>
-      <span class="local-desc">${l.descripcion || ''}</span>
-    </div>
-  `).join('');
-
-  listaEl.querySelectorAll('.local-card').forEach(card => {
-    card.addEventListener('click', () => seleccionarLocal(card.dataset.id, card.dataset.nombre));
-  });
+      <span class="local-emoji">${l.emoji||'🍽️'}</span>
+      <div class="local-info"><div class="local-nombre">${l.nombre}</div><div class="local-desc">${l.descripcion||''}</div></div>
+      <span class="local-arr">›</span>
+    </div>`).join('');
+  lista.querySelectorAll('.local-card').forEach(c => c.addEventListener('click', () => mostrarMenu(c.dataset.id, c.dataset.nombre)));
+  document.getElementById('btn-volver-home').onclick = () => { hide(document.getElementById('section-locales')); show(document.getElementById('section-home')); };
 }
 
-// ── MENÚ DEL LOCAL ──
-async function seleccionarLocal(localId, localNombre) {
-  localActual = { id: localId, nombre: localNombre };
-  hide(document.getElementById('seccion-locales'));
-  show(document.getElementById('seccion-menu'));
-  document.getElementById('menu-local-nombre').textContent = localNombre;
-
-  const catEl = document.getElementById('lista-categorias');
-  const itemsEl = document.getElementById('lista-items');
-  catEl.innerHTML = '<span style="color:var(--text2);font-size:.85rem">Cargando menú...</span>';
-  itemsEl.innerHTML = '';
-
+// ── MENÚ ──
+async function mostrarMenu(localId, localNombre) {
+  localActual = {id:localId, nombre:localNombre};
+  limpiarCarrito(); actualizarFAB();
+  hide(document.getElementById('section-locales'));
+  show(document.getElementById('section-menu'));
+  document.getElementById('menu-titulo').textContent = localNombre;
+  const catEl = document.getElementById('menu-cats');
+  const itemsEl = document.getElementById('menu-items');
+  catEl.innerHTML = '<span class="loading-txt">Cargando...</span>'; itemsEl.innerHTML='';
   let grupos = await getMenuLocal(localId);
-
-  // Si no hay nada en Firestore, usar el menú de respaldo y cargarlo
-  if (Object.keys(grupos).length === 0) {
-    await importarMenu(localId, MENU_FUENTE_ALEMANA);
-    grupos = await getMenuLocal(localId);
-  }
-
+  if (!Object.keys(grupos).length) { await importarMenu(localId, MENU_FUENTE_ALEMANA); grupos = await getMenuLocal(localId); }
   menuActual = grupos;
-  const categorias = Object.keys(grupos);
-  categoriaActiva = categorias[0];
-
-  catEl.innerHTML = categorias.map(cat => `
-    <button class="cat-tab ${cat === categoriaActiva ? 'active' : ''}" data-cat="${cat}">${cat}</button>
-  `).join('');
-
-  catEl.querySelectorAll('.cat-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      catEl.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      categoriaActiva = tab.dataset.cat;
-      renderItems(grupos[categoriaActiva]);
+  const cats = Object.keys(grupos);
+  let catActiva = cats[0];
+  catEl.innerHTML = cats.map(c => `<button class="cat-pill${c===catActiva?' active':''}" data-cat="${c}">${c}</button>`).join('');
+  catEl.querySelectorAll('.cat-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      catEl.querySelectorAll('.cat-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); catActiva=btn.dataset.cat; renderItems(grupos[catActiva]);
     });
   });
-
-  renderItems(grupos[categoriaActiva]);
-
-  document.getElementById('btn-volver-locales').addEventListener('click', () => {
-    hide(document.getElementById('seccion-menu'));
-    show(document.getElementById('seccion-locales'));
-    limpiarCarrito();
-    actualizarCarritoFAB();
-  });
+  renderItems(grupos[catActiva]);
+  document.getElementById('btn-volver-locales').onclick = () => { hide(document.getElementById('section-menu')); show(document.getElementById('section-locales')); limpiarCarrito(); actualizarFAB(); };
 }
 
 function renderItems(items) {
-  const el = document.getElementById('lista-items');
+  const el = document.getElementById('menu-items');
   el.innerHTML = items.map(item => `
     <div class="item-card" data-id="${item.id}">
-      <div class="item-img">${item.emoji || '🍽️'}</div>
-      <div class="item-info">
+      <div class="item-emoji">${item.emoji||'🍽️'}</div>
+      <div class="item-body">
         <div class="item-nombre">${item.nombre}</div>
-        <div class="item-desc">${item.descripcion || ''}</div>
-        <div class="item-precio">${formatPrecio(item.precio)}</div>
+        ${item.descripcion?`<div class="item-desc">${item.descripcion}</div>`:''}
       </div>
-    </div>
-  `).join('');
-
+      <div class="item-precio">${formatPrecio(item.precio)}</div>
+    </div>`).join('');
   el.querySelectorAll('.item-card').forEach(card => {
     card.addEventListener('click', () => {
-      const allItems = Object.values(menuActual).flat();
-      const item = allItems.find(i => i.id === card.dataset.id);
+      const item = Object.values(menuActual).flat().find(i => i.id===card.dataset.id);
       if (item) abrirModalItem(item);
     });
   });
@@ -205,166 +198,87 @@ function renderItems(items) {
 
 // ── MODAL ÍTEM ──
 function abrirModalItem(item) {
-  itemSeleccionado = item;
-  document.getElementById('modal-item-nombre').textContent = item.nombre;
-  document.getElementById('modal-item-desc').textContent = item.descripcion || '';
-  document.getElementById('modal-item-precio').textContent = formatPrecio(item.precio);
-  document.getElementById('modal-item-img').innerHTML = item.emoji || '🍽️';
-  document.getElementById('modal-comentario-input').value = '';
-  document.getElementById('modal-qty-val').textContent = '1';
+  itemSeleccionado=item; qty=1;
+  document.getElementById('mi-emoji').textContent = item.emoji||'🍽️';
+  document.getElementById('mi-nombre').textContent = item.nombre;
+  document.getElementById('mi-desc').textContent = item.descripcion||'';
+  document.getElementById('mi-precio').textContent = formatPrecio(item.precio);
+  document.getElementById('mi-comentario').value='';
+  document.getElementById('mi-qty').textContent='1';
   show(document.getElementById('modal-item'));
 }
+document.getElementById('btn-cerrar-item').onclick = () => hide(document.getElementById('modal-item'));
+document.getElementById('modal-item').addEventListener('click', e => { if(e.target===document.getElementById('modal-item')) hide(document.getElementById('modal-item')); });
+document.getElementById('btn-qty-menos').onclick = () => { qty=Math.max(1,qty-1); document.getElementById('mi-qty').textContent=qty; };
+document.getElementById('btn-qty-mas').onclick = () => { qty=Math.min(10,qty+1); document.getElementById('mi-qty').textContent=qty; };
+document.getElementById('btn-agregar-item').onclick = () => {
+  if(!itemSeleccionado) return;
+  agregarAlCarrito(itemSeleccionado, qty, document.getElementById('mi-comentario').value.trim());
+  hide(document.getElementById('modal-item')); actualizarFAB();
+};
 
-document.getElementById('btn-cerrar-item').addEventListener('click', () => hide(document.getElementById('modal-item')));
-document.getElementById('modal-item').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('modal-item')) hide(document.getElementById('modal-item'));
-});
-
-let qty = 1;
-document.getElementById('btn-qty-menos').addEventListener('click', () => {
-  qty = Math.max(1, qty - 1);
-  document.getElementById('modal-qty-val').textContent = qty;
-});
-document.getElementById('btn-qty-mas').addEventListener('click', () => {
-  qty = Math.min(10, qty + 1);
-  document.getElementById('modal-qty-val').textContent = qty;
-});
-
-document.getElementById('btn-agregar-item').addEventListener('click', () => {
-  if (!itemSeleccionado) return;
-  const comentario = document.getElementById('modal-comentario-input').value.trim();
-  qty = parseInt(document.getElementById('modal-qty-val').textContent);
-  agregarAlCarrito(itemSeleccionado, qty, comentario);
-  qty = 1;
-  hide(document.getElementById('modal-item'));
-  actualizarCarritoFAB();
-});
-
-// ── CARRITO FAB ──
-function actualizarCarritoFAB() {
-  const count = getCountCarrito();
-  const fab = document.getElementById('carrito-fab');
-  if (count > 0) {
-    show(fab);
-    document.getElementById('carrito-count').textContent = count;
-    document.getElementById('carrito-total-fab').textContent = formatPrecio(getTotalCarrito());
-  } else {
-    hide(fab);
-  }
+// ── FAB ──
+function actualizarFAB() {
+  const count=getCountCarrito();
+  const fab=document.getElementById('carrito-fab');
+  const menuVisible=document.getElementById('section-menu').style.display!=='none';
+  if(count>0 && menuVisible){ show(fab); document.getElementById('fab-count').textContent=count; document.getElementById('fab-total').textContent=formatPrecio(getTotalCarrito()); }
+  else hide(fab);
 }
-
-document.getElementById('btn-ver-carrito').addEventListener('click', () => abrirCarrito());
+document.getElementById('carrito-fab').onclick = () => { renderCarrito(); show(document.getElementById('modal-carrito')); };
 
 // ── MODAL CARRITO ──
-function abrirCarrito() {
-  renderCarrito();
-  show(document.getElementById('modal-carrito'));
-}
-
 function renderCarrito() {
-  const lista = document.getElementById('carrito-items-lista');
-  const carrito = getCarrito();
-
-  if (carrito.length === 0) {
-    lista.innerHTML = '<p style="color:var(--text2);text-align:center;padding:1rem">El carrito está vacío</p>';
-  } else {
-    lista.innerHTML = carrito.map((c, i) => `
-      <div class="carrito-item">
-        <div class="carrito-item-info">
-          <div class="carrito-item-nombre">${c.emoji} ${c.nombre} x${c.cantidad}</div>
-          ${c.comentario ? `<div class="carrito-item-comentario">💬 ${c.comentario}</div>` : ''}
-        </div>
-        <span class="carrito-item-precio">${formatPrecio(c.precio * c.cantidad)}</span>
-        <button class="carrito-item-del" data-index="${i}">✕</button>
-      </div>
-    `).join('');
-
-    lista.querySelectorAll('.carrito-item-del').forEach(btn => {
-      btn.addEventListener('click', () => {
-        eliminarDelCarrito(parseInt(btn.dataset.index));
-        renderCarrito();
-        actualizarCarritoFAB();
-      });
-    });
-  }
-
-  document.getElementById('carrito-total-modal').textContent = formatPrecio(getTotalCarrito());
+  const lista=document.getElementById('carrito-lista');
+  const c=getCarrito();
+  lista.innerHTML = c.length===0 ? '<p class="loading-txt">El carrito está vacío</p>' :
+    c.map((x,i)=>`<div class="carrito-item">
+      <span class="ci-emoji">${x.emoji}</span>
+      <div class="ci-info"><div class="ci-nombre">${x.nombre} <span class="ci-qty">×${x.cantidad}</span></div>${x.comentario?`<div class="ci-comentario">💬 ${x.comentario}</div>`:''}</div>
+      <span class="ci-precio">${formatPrecio(x.precio*x.cantidad)}</span>
+      <button class="ci-del" data-i="${i}">✕</button>
+    </div>`).join('');
+  lista.querySelectorAll('.ci-del').forEach(btn => { btn.onclick=()=>{ eliminarDelCarrito(parseInt(btn.dataset.i)); renderCarrito(); actualizarFAB(); }; });
+  document.getElementById('carrito-total').textContent = formatPrecio(getTotalCarrito());
 }
-
-document.getElementById('btn-cerrar-carrito').addEventListener('click', () => hide(document.getElementById('modal-carrito')));
-document.getElementById('modal-carrito').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('modal-carrito')) hide(document.getElementById('modal-carrito'));
-});
-
-document.getElementById('btn-confirmar-pedido').addEventListener('click', async () => {
-  const usuario = getUsuarioActual();
-  if (getCarrito().length === 0) return;
-
-  const btn = document.getElementById('btn-confirmar-pedido');
-  btn.textContent = 'Confirmando...';
-  btn.disabled = true;
-
+document.getElementById('btn-cerrar-carrito').onclick = () => hide(document.getElementById('modal-carrito'));
+document.getElementById('modal-carrito').addEventListener('click', e => { if(e.target===document.getElementById('modal-carrito')) hide(document.getElementById('modal-carrito')); });
+document.getElementById('btn-confirmar-pedido').onclick = async () => {
+  const usuario=getUsuarioActual();
+  if(!getCarrito().length) return;
+  const btn=document.getElementById('btn-confirmar-pedido');
+  btn.textContent='Confirmando...'; btn.disabled=true;
   try {
     await confirmarPedido(usuario.id, usuario.nombre, localActual.id, localActual.nombre);
-    hide(document.getElementById('modal-carrito'));
-    actualizarCarritoFAB();
-    alert('✓ Pedido confirmado. ¡Buen provecho!');
-  } catch (e) {
-    alert('Error al confirmar: ' + e.message);
-  }
+    hide(document.getElementById('modal-carrito')); actualizarFAB();
+    hide(document.getElementById('section-menu'));
+    await renderHome(); show(document.getElementById('section-home'));
+    alert('✓ ¡Pedido confirmado! 🎉');
+  } catch(e) { alert('Error: '+e.message); }
+  btn.textContent='Confirmar pedido'; btn.disabled=false;
+};
 
-  btn.textContent = 'Confirmar pedido';
-  btn.disabled = false;
-});
-
-// ── HISTORIAL ──
-async function abrirHistorial() {
-  const usuario = getUsuarioActual();
-  const lista = document.getElementById('historial-lista');
-  lista.innerHTML = '<p style="color:var(--text2);text-align:center">Cargando...</p>';
-  show(document.getElementById('modal-historial'));
-
-  const pedidos = await getPedidosUsuario(usuario.id);
-
-  if (pedidos.length === 0) {
-    lista.innerHTML = '<p style="color:var(--text2);text-align:center;padding:1rem">Aún no tienes pedidos.</p>';
-    return;
-  }
-
-  lista.innerHTML = pedidos.map(p => {
-    const fecha = p.fecha?.toDate ? p.fecha.toDate() : new Date(p.fecha);
-    return `
-      <div class="historial-item">
-        <div class="historial-item-header">
-          <span class="historial-fecha">${formatFecha(fecha)} · ${p.localNombre}</span>
-          <span class="historial-total">${formatPrecio(p.total)}</span>
-        </div>
-        <div class="historial-items-list">
-          ${p.items.map(i => `${i.emoji} ${i.nombre} x${i.cantidad}${i.comentario ? ` (${i.comentario})` : ''}`).join(' · ')}
-        </div>
-      </div>
-    `;
-  }).join('');
+// ── MODAL DETALLE ──
+function abrirDetalle(pedido) {
+  const fecha = pedido.fecha?.toDate ? pedido.fecha.toDate() : new Date(pedido.fecha);
+  document.getElementById('det-titulo').textContent = pedido.localNombre;
+  document.getElementById('det-fecha').textContent = formatFecha(fecha);
+  document.getElementById('det-lista').innerHTML = pedido.items.map(i=>`
+    <div class="det-item">
+      <span>${i.emoji} ${i.nombre} ×${i.cantidad}${i.comentario?` <em>(${i.comentario})</em>`:''}</span>
+      <span>${formatPrecio(i.precio*i.cantidad)}</span>
+    </div>`).join('');
+  document.getElementById('det-total').textContent = formatPrecio(pedido.total);
+  show(document.getElementById('modal-detalle'));
 }
-
-document.getElementById('modal-historial').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('modal-historial')) hide(document.getElementById('modal-historial'));
-});
+document.getElementById('btn-cerrar-detalle').onclick = () => hide(document.getElementById('modal-detalle'));
+document.getElementById('modal-detalle').addEventListener('click', e => { if(e.target===document.getElementById('modal-detalle')) hide(document.getElementById('modal-detalle')); });
 
 // ── ADMIN ──
 function mostrarAdmin() {
   hide(document.getElementById('screen-login'));
   show(document.getElementById('screen-admin'));
-  document.getElementById('screen-admin').classList.add('active');
-
-  initAdminTabs();
-  initFormCumple();
-  initFormUsuario();
-  initImportarMenu();
+  initAdminTabs(); initFormCumple(); initFormUsuario(); initImportarMenu();
   cargarTabActivo('pedidos');
-
-  document.getElementById('btn-admin-logout').addEventListener('click', () => {
-    cerrarSesion();
-    location.reload();
-  });
+  document.getElementById('btn-admin-logout').onclick = () => { cerrarSesion(); location.reload(); };
 }
