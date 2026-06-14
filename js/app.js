@@ -1,26 +1,64 @@
 import { loginConRut, getUsuarioActual, setUsuarioActual, guardarSesion, cargarSesion, cerrarSesion, initRutInput } from './auth.js';
 import { getCumpleanos, diaCelebracion, esMismoDia } from './cumples.js';
-import { getLocales, getMenuLocal, MENU_FUENTE_ALEMANA, getMenuLocalFlat, importarMenu } from './menu.js';
+import { getLocales, getMenuLocal, MENU_FUENTE_ALEMANA, importarMenu } from './menu.js';
 import { getCarrito, agregarAlCarrito, eliminarDelCarrito, getTotalCarrito, getCountCarrito, limpiarCarrito, confirmarPedido, getPedidosUsuario } from './pedidos.js';
 import { formatPrecio, formatFecha, show, hide } from './utils.js';
 import { initAdminTabs, cargarTabActivo, initFormCumple, initFormUsuario, initImportarMenu } from './admin.js';
 
-let menuActual = {}, localActual = null, itemSeleccionado = null, qty = 1;
-let todosPedidos = [];
+let menuActual = {}, localActual = null, itemSeleccionado = null, qty = 1, todosPedidos = [];
+
+const $ = id => document.getElementById(id);
 
 document.addEventListener('DOMContentLoaded', async () => {
   initRutInput();
-  document.getElementById('btn-login').addEventListener('click', handleLogin);
+
+  // Login
+  $('btn-login').addEventListener('click', handleLogin);
+  $('rut-input').addEventListener('keydown', e => { if(e.key==='Enter') handleLogin(); });
+
+  // Modales — siempre existen en el HTML
+  $('btn-cerrar-item').onclick = () => hide($('modal-item'));
+  $('modal-item').addEventListener('click', e => { if(e.target===$('modal-item')) hide($('modal-item')); });
+  $('btn-qty-menos').onclick = () => { qty=Math.max(1,qty-1); $('mi-qty').textContent=qty; };
+  $('btn-qty-mas').onclick = () => { qty=Math.min(10,qty+1); $('mi-qty').textContent=qty; };
+  $('btn-agregar-item').onclick = () => {
+    if(!itemSeleccionado) return;
+    agregarAlCarrito(itemSeleccionado, qty, $('mi-comentario').value.trim());
+    hide($('modal-item')); actualizarFAB();
+  };
+  $('carrito-fab').onclick = () => { renderCarrito(); show($('modal-carrito')); };
+  $('btn-cerrar-carrito').onclick = () => hide($('modal-carrito'));
+  $('modal-carrito').addEventListener('click', e => { if(e.target===$('modal-carrito')) hide($('modal-carrito')); });
+  $('btn-confirmar-pedido').onclick = async () => {
+    const usuario=getUsuarioActual();
+    if(!getCarrito().length) return;
+    const btn=$('btn-confirmar-pedido');
+    btn.textContent='Confirmando...'; btn.disabled=true;
+    try {
+      await confirmarPedido(usuario.id, usuario.nombre, localActual.id, localActual.nombre);
+      hide($('modal-carrito')); actualizarFAB();
+      hide($('section-menu'));
+      await renderHome(); show($('section-home'));
+      alert('✓ ¡Pedido confirmado! 🎉');
+    } catch(e) { alert('Error: '+e.message); }
+    btn.textContent='Confirmar pedido'; btn.disabled=false;
+  };
+  $('btn-cerrar-detalle').onclick = () => hide($('modal-detalle'));
+  $('modal-detalle').addEventListener('click', e => { if(e.target===$('modal-detalle')) hide($('modal-detalle')); });
+  $('btn-logout').onclick = () => { cerrarSesion(); location.reload(); };
+  $('btn-admin-logout').onclick = () => { cerrarSesion(); location.reload(); };
+
+  // Sesión existente
   const sesion = cargarSesion();
   if (sesion) { setUsuarioActual(sesion); sesion.rol==='admin' ? mostrarAdmin() : await mostrarApp(); }
 });
 
 async function handleLogin() {
-  const rut = document.getElementById('rut-input').value;
-  const errorEl = document.getElementById('login-error');
+  const rut = $('rut-input').value;
+  const errorEl = $('login-error');
   hide(errorEl);
   if (!rut || rut.length < 5) { show(errorEl); errorEl.textContent='Ingresa un RUT válido.'; return; }
-  const btn = document.getElementById('btn-login');
+  const btn = $('btn-login');
   btn.textContent='Verificando...'; btn.disabled=true;
   try {
     const usuario = await loginConRut(rut);
@@ -31,23 +69,20 @@ async function handleLogin() {
 }
 
 async function mostrarApp() {
-  hide(document.getElementById('screen-login'));
-  show(document.getElementById('screen-app'));
-  const usuario = getUsuarioActual();
-  document.getElementById('header-username').textContent = usuario.nombre;
-  document.getElementById('btn-logout').onclick = () => { cerrarSesion(); location.reload(); };
+  hide($('screen-login'));
+  show($('screen-app'));
+  $('header-username').textContent = getUsuarioActual().nombre;
   await renderHome();
 }
 
 // ── HOME ──
 async function renderHome() {
   const usuario = getUsuarioActual();
-  show(document.getElementById('section-home'));
-  hide(document.getElementById('section-locales'));
-  hide(document.getElementById('section-menu'));
-  hide(document.getElementById('carrito-fab'));
+  show($('section-home'));
+  hide($('section-locales'));
+  hide($('section-menu'));
+  hide($('carrito-fab'));
 
-  // Próximo cumpleaños dentro de 7 días
   const hoy = new Date(); hoy.setHours(0,0,0,0);
   const en7 = new Date(hoy); en7.setDate(en7.getDate()+7);
   const cumples = await getCumpleanos();
@@ -55,25 +90,25 @@ async function renderHome() {
 
   for (const c of cumples) {
     const celeb = diaCelebracion(c.mes, c.dia); celeb.setHours(0,0,0,0);
-    if (celeb >= hoy && celeb <= en7) {
-      if (!fechaCeleb || celeb < fechaCeleb) { proxCumple = c; fechaCeleb = celeb; }
+    if (celeb >= hoy && celeb <= en7 && (!fechaCeleb || celeb < fechaCeleb)) {
+      proxCumple = c; fechaCeleb = celeb;
     }
   }
 
   const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const diasSem = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
-  const cumpleCard = document.getElementById('cumple-card');
-  const cumpleInfo = document.getElementById('cumple-info');
-  const btnPedir = document.getElementById('btn-ir-a-pedir');
-  const sigCumple = document.getElementById('siguiente-cumple');
+  const cumpleCard = $('cumple-card');
+  const cumpleInfo = $('cumple-info');
+  const btnPedir = $('btn-ir-a-pedir');
+  const sigCumple = $('siguiente-cumple');
 
   if (proxCumple) {
     const esHoy = esMismoDia(fechaCeleb, hoy);
-    const diasRestantes = Math.round((fechaCeleb - hoy)/(1000*60*60*24));
+    const dias = Math.round((fechaCeleb-hoy)/(1000*60*60*24));
     cumpleCard.className = 'cumple-card ' + (esHoy ? 'cumple-hoy-card' : 'cumple-pronto-card');
     cumpleInfo.innerHTML = esHoy
       ? `<span class="cumple-tag hoy">🎉 ¡Hoy!</span><div class="cumple-nombre">${proxCumple.nombre} está de cumpleaños</div><div class="cumple-sub">El pedido está habilitado</div>`
-      : `<span class="cumple-tag pronto">📅 En ${diasRestantes} día${diasRestantes>1?'s':''}</span><div class="cumple-nombre">${proxCumple.nombre}</div><div class="cumple-sub">Celebramos el ${diasSem[fechaCeleb.getDay()]} ${fechaCeleb.getDate()} de ${meses[fechaCeleb.getMonth()]}</div>`;
+      : `<span class="cumple-tag pronto">📅 En ${dias} día${dias>1?'s':''}</span><div class="cumple-nombre">${proxCumple.nombre}</div><div class="cumple-sub">Celebramos el ${diasSem[fechaCeleb.getDay()]} ${fechaCeleb.getDate()} de ${meses[fechaCeleb.getMonth()]}</div>`;
     show(btnPedir);
     hide(sigCumple);
     btnPedir.onclick = mostrarLocales;
@@ -81,7 +116,6 @@ async function renderHome() {
     cumpleCard.className = 'cumple-card cumple-sin-card';
     cumpleInfo.innerHTML = `<span class="cumple-tag sin">🔒 Sin pedidos</span><div class="cumple-nombre">No hay cumpleaños esta semana</div>`;
     hide(btnPedir);
-    // Mostrar el siguiente aunque esté lejos
     const futuros = [];
     for (const c of cumples) {
       const celeb = diaCelebracion(c.mes, c.dia); celeb.setHours(0,0,0,0);
@@ -94,26 +128,23 @@ async function renderHome() {
     }
   }
 
-  // Pedidos del usuario
   todosPedidos = await getPedidosUsuario(usuario.id);
   const pendientes = todosPedidos.filter(p => p.estado==='pendiente');
   const pagados = todosPedidos.filter(p => p.estado!=='pendiente');
 
-  // Pendiente
-  const secPend = document.getElementById('section-pendiente');
+  const secPend = $('section-pendiente');
   if (pendientes.length > 0) {
     show(secPend);
     const p = pendientes[0];
-    document.getElementById('pend-total').textContent = formatPrecio(p.total);
-    document.getElementById('pend-local').textContent = p.localNombre;
+    $('pend-total').textContent = formatPrecio(p.total);
+    $('pend-local').textContent = p.localNombre;
     const fecha = p.fecha?.toDate ? p.fecha.toDate() : new Date(p.fecha);
-    document.getElementById('pend-fecha').textContent = formatFecha(fecha);
-    document.getElementById('btn-ver-pendiente').onclick = () => abrirDetalle(p);
+    $('pend-fecha').textContent = formatFecha(fecha);
+    $('btn-ver-pendiente').onclick = () => abrirDetalle(p);
   } else hide(secPend);
 
-  // Historial
-  const secHist = document.getElementById('section-historial');
-  const listaHist = document.getElementById('historial-lista');
+  const secHist = $('section-historial');
+  const listaHist = $('historial-lista');
   if (pagados.length > 0) {
     show(secHist);
     listaHist.innerHTML = pagados.slice(0,8).map(p => {
@@ -125,19 +156,16 @@ async function renderHome() {
       </div>`;
     }).join('');
     listaHist.querySelectorAll('.hist-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const p = todosPedidos.find(x => x.id===row.dataset.id);
-        if (p) abrirDetalle(p);
-      });
+      row.addEventListener('click', () => { const p=todosPedidos.find(x=>x.id===row.dataset.id); if(p) abrirDetalle(p); });
     });
   } else hide(secHist);
 }
 
 // ── LOCALES ──
 async function mostrarLocales() {
-  hide(document.getElementById('section-home'));
-  show(document.getElementById('section-locales'));
-  const lista = document.getElementById('lista-locales');
+  hide($('section-home'));
+  show($('section-locales'));
+  const lista = $('lista-locales');
   lista.innerHTML = '<p class="loading-txt">Cargando...</p>';
   let locales = await getLocales();
   if (!locales.length) locales = [{id:'fuente-alemana',nombre:'Fuente Alemana',descripcion:'Concepción · Completos y sándwiches',emoji:'🌭'}];
@@ -148,18 +176,18 @@ async function mostrarLocales() {
       <span class="local-arr">›</span>
     </div>`).join('');
   lista.querySelectorAll('.local-card').forEach(c => c.addEventListener('click', () => mostrarMenu(c.dataset.id, c.dataset.nombre)));
-  document.getElementById('btn-volver-home').onclick = () => { hide(document.getElementById('section-locales')); show(document.getElementById('section-home')); };
+  $('btn-volver-home').onclick = () => { hide($('section-locales')); show($('section-home')); };
 }
 
 // ── MENÚ ──
 async function mostrarMenu(localId, localNombre) {
   localActual = {id:localId, nombre:localNombre};
   limpiarCarrito(); actualizarFAB();
-  hide(document.getElementById('section-locales'));
-  show(document.getElementById('section-menu'));
-  document.getElementById('menu-titulo').textContent = localNombre;
-  const catEl = document.getElementById('menu-cats');
-  const itemsEl = document.getElementById('menu-items');
+  hide($('section-locales'));
+  show($('section-menu'));
+  $('menu-titulo').textContent = localNombre;
+  const catEl = $('menu-cats');
+  const itemsEl = $('menu-items');
   catEl.innerHTML = '<span class="loading-txt">Cargando...</span>'; itemsEl.innerHTML='';
   let grupos = await getMenuLocal(localId);
   if (!Object.keys(grupos).length) { await importarMenu(localId, MENU_FUENTE_ALEMANA); grupos = await getMenuLocal(localId); }
@@ -174,18 +202,15 @@ async function mostrarMenu(localId, localNombre) {
     });
   });
   renderItems(grupos[catActiva]);
-  document.getElementById('btn-volver-locales').onclick = () => { hide(document.getElementById('section-menu')); show(document.getElementById('section-locales')); limpiarCarrito(); actualizarFAB(); };
+  $('btn-volver-locales').onclick = () => { hide($('section-menu')); show($('section-locales')); limpiarCarrito(); actualizarFAB(); };
 }
 
 function renderItems(items) {
-  const el = document.getElementById('menu-items');
+  const el = $('menu-items');
   el.innerHTML = items.map(item => `
     <div class="item-card" data-id="${item.id}">
       <div class="item-emoji">${item.emoji||'🍽️'}</div>
-      <div class="item-body">
-        <div class="item-nombre">${item.nombre}</div>
-        ${item.descripcion?`<div class="item-desc">${item.descripcion}</div>`:''}
-      </div>
+      <div class="item-body"><div class="item-nombre">${item.nombre}</div>${item.descripcion?`<div class="item-desc">${item.descripcion}</div>`:''}</div>
       <div class="item-precio">${formatPrecio(item.precio)}</div>
     </div>`).join('');
   el.querySelectorAll('.item-card').forEach(card => {
@@ -196,40 +221,26 @@ function renderItems(items) {
   });
 }
 
-// ── MODAL ÍTEM ──
 function abrirModalItem(item) {
   itemSeleccionado=item; qty=1;
-  document.getElementById('mi-emoji').textContent = item.emoji||'🍽️';
-  document.getElementById('mi-nombre').textContent = item.nombre;
-  document.getElementById('mi-desc').textContent = item.descripcion||'';
-  document.getElementById('mi-precio').textContent = formatPrecio(item.precio);
-  document.getElementById('mi-comentario').value='';
-  document.getElementById('mi-qty').textContent='1';
-  show(document.getElementById('modal-item'));
+  $('mi-emoji').textContent = item.emoji||'🍽️';
+  $('mi-nombre').textContent = item.nombre;
+  $('mi-desc').textContent = item.descripcion||'';
+  $('mi-precio').textContent = formatPrecio(item.precio);
+  $('mi-comentario').value='';
+  $('mi-qty').textContent='1';
+  show($('modal-item'));
 }
-document.getElementById('btn-cerrar-item').onclick = () => hide(document.getElementById('modal-item'));
-document.getElementById('modal-item').addEventListener('click', e => { if(e.target===document.getElementById('modal-item')) hide(document.getElementById('modal-item')); });
-document.getElementById('btn-qty-menos').onclick = () => { qty=Math.max(1,qty-1); document.getElementById('mi-qty').textContent=qty; };
-document.getElementById('btn-qty-mas').onclick = () => { qty=Math.min(10,qty+1); document.getElementById('mi-qty').textContent=qty; };
-document.getElementById('btn-agregar-item').onclick = () => {
-  if(!itemSeleccionado) return;
-  agregarAlCarrito(itemSeleccionado, qty, document.getElementById('mi-comentario').value.trim());
-  hide(document.getElementById('modal-item')); actualizarFAB();
-};
 
-// ── FAB ──
 function actualizarFAB() {
   const count=getCountCarrito();
-  const fab=document.getElementById('carrito-fab');
-  const menuVisible=document.getElementById('section-menu').style.display!=='none';
-  if(count>0 && menuVisible){ show(fab); document.getElementById('fab-count').textContent=count; document.getElementById('fab-total').textContent=formatPrecio(getTotalCarrito()); }
-  else hide(fab);
+  const menuVisible=$('section-menu') && $('section-menu').style.display!=='none' && !$('section-menu').classList.contains('hidden');
+  if(count>0 && menuVisible){ show($('carrito-fab')); $('fab-count').textContent=count; $('fab-total').textContent=formatPrecio(getTotalCarrito()); }
+  else hide($('carrito-fab'));
 }
-document.getElementById('carrito-fab').onclick = () => { renderCarrito(); show(document.getElementById('modal-carrito')); };
 
-// ── MODAL CARRITO ──
 function renderCarrito() {
-  const lista=document.getElementById('carrito-lista');
+  const lista=$('carrito-lista');
   const c=getCarrito();
   lista.innerHTML = c.length===0 ? '<p class="loading-txt">El carrito está vacío</p>' :
     c.map((x,i)=>`<div class="carrito-item">
@@ -239,46 +250,25 @@ function renderCarrito() {
       <button class="ci-del" data-i="${i}">✕</button>
     </div>`).join('');
   lista.querySelectorAll('.ci-del').forEach(btn => { btn.onclick=()=>{ eliminarDelCarrito(parseInt(btn.dataset.i)); renderCarrito(); actualizarFAB(); }; });
-  document.getElementById('carrito-total').textContent = formatPrecio(getTotalCarrito());
+  $('carrito-total').textContent = formatPrecio(getTotalCarrito());
 }
-document.getElementById('btn-cerrar-carrito').onclick = () => hide(document.getElementById('modal-carrito'));
-document.getElementById('modal-carrito').addEventListener('click', e => { if(e.target===document.getElementById('modal-carrito')) hide(document.getElementById('modal-carrito')); });
-document.getElementById('btn-confirmar-pedido').onclick = async () => {
-  const usuario=getUsuarioActual();
-  if(!getCarrito().length) return;
-  const btn=document.getElementById('btn-confirmar-pedido');
-  btn.textContent='Confirmando...'; btn.disabled=true;
-  try {
-    await confirmarPedido(usuario.id, usuario.nombre, localActual.id, localActual.nombre);
-    hide(document.getElementById('modal-carrito')); actualizarFAB();
-    hide(document.getElementById('section-menu'));
-    await renderHome(); show(document.getElementById('section-home'));
-    alert('✓ ¡Pedido confirmado! 🎉');
-  } catch(e) { alert('Error: '+e.message); }
-  btn.textContent='Confirmar pedido'; btn.disabled=false;
-};
 
-// ── MODAL DETALLE ──
 function abrirDetalle(pedido) {
   const fecha = pedido.fecha?.toDate ? pedido.fecha.toDate() : new Date(pedido.fecha);
-  document.getElementById('det-titulo').textContent = pedido.localNombre;
-  document.getElementById('det-fecha').textContent = formatFecha(fecha);
-  document.getElementById('det-lista').innerHTML = pedido.items.map(i=>`
+  $('det-titulo').textContent = pedido.localNombre;
+  $('det-fecha').textContent = formatFecha(fecha);
+  $('det-lista').innerHTML = pedido.items.map(i=>`
     <div class="det-item">
       <span>${i.emoji} ${i.nombre} ×${i.cantidad}${i.comentario?` <em>(${i.comentario})</em>`:''}</span>
       <span>${formatPrecio(i.precio*i.cantidad)}</span>
     </div>`).join('');
-  document.getElementById('det-total').textContent = formatPrecio(pedido.total);
-  show(document.getElementById('modal-detalle'));
+  $('det-total').textContent = formatPrecio(pedido.total);
+  show($('modal-detalle'));
 }
-document.getElementById('btn-cerrar-detalle').onclick = () => hide(document.getElementById('modal-detalle'));
-document.getElementById('modal-detalle').addEventListener('click', e => { if(e.target===document.getElementById('modal-detalle')) hide(document.getElementById('modal-detalle')); });
 
-// ── ADMIN ──
 function mostrarAdmin() {
-  hide(document.getElementById('screen-login'));
-  show(document.getElementById('screen-admin'));
+  hide($('screen-login'));
+  show($('screen-admin'));
   initAdminTabs(); initFormCumple(); initFormUsuario(); initImportarMenu();
   cargarTabActivo('pedidos');
-  document.getElementById('btn-admin-logout').onclick = () => { cerrarSesion(); location.reload(); };
 }
